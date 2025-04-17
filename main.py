@@ -9,7 +9,6 @@ load_dotenv()
 
 CLIENT_ID= os.getenv('client_id')
 CLIENT_ID_SECRET = os.getenv('client_secret')
-TOP50_TRACKS_SHORT_ID = os.getenv('top50_tracks_short_id')
 REFRESH_ACCESS_TOKEN = os.getenv('refresh_access_token')
 
 def get_user_id(sp):
@@ -50,10 +49,62 @@ def main():
 
     user_info = get_user_id(sp)
 
-    sp.user_playlist_replace_tracks(user=user_info, playlist_id=f'{TOP50_TRACKS_SHORT_ID}', tracks=list())
+    playlist_name = 'Top Tracks Per Month'
+    playlist_archive_name = 'Top Tracks Archive'
+
+    playlists = []
+    offset = 0
+
+    while True:
+        batch = sp.current_user_playlists(limit=50, offset=offset)["items"]
+        if not batch:
+            break
+        playlists.extend(batch)
+        offset += 50
     
-    sp.user_playlist_replace_tracks(user=user_info, playlist_id=f'{TOP50_TRACKS_SHORT_ID}', tracks=list(top50playlist_short.values()))
-        
+    for playlist in playlists:
+        if playlist["name"] == playlist_name:
+            playlist_id = playlist["id"]
+            break
+
+    for playlist in playlists:
+        if playlist["name"] == playlist_archive_name:
+            playlist_archive_id = playlist["id"]
+            break
+
+    archive_tracks = []
+    offset = 0
+
+    while True:
+        response = sp.playlist_tracks(playlist_archive_id, offset=offset, limit=50)
+        items = response['items']
+        if not items:
+            break
+        for item in items:
+            track = item['track']
+            if track:  
+                archive_tracks.append(track['id']) 
+        offset += 50
+
+    for i in range(len(archive_tracks)):
+        archive_tracks[i] = 'spotify:track:'+ archive_tracks[i]
+
+    new_archive_tracks = []
+
+    for i in range(len(list(top50playlist_short.values()))):
+        if list(top50playlist_short.values())[i] not in archive_tracks:
+            new_archive_tracks.append(list(top50playlist_short.values())[i])
+
+    sp.user_playlist_replace_tracks(user=user_info, playlist_id=playlist_id, tracks=list())
+    sp.user_playlist_replace_tracks(user=user_info, playlist_id=playlist_id, tracks=list(top50playlist_short.values()))
+    print(f"Updated the playlist: {playlist_name}")
+
+    if len(new_archive_tracks) > 0:
+        sp.user_playlist_add_tracks(user=user_info, playlist_id=playlist_archive_id, tracks=new_archive_tracks, position=0)
+        print(f"Added {len(new_archive_tracks)} new tracks to the playlist: {playlist_archive_name}")
+    else:
+        print("No new tracks to add to the archive playlist.")
+
     print('Script Executed Successfully')
 
 if __name__ == '__main__':
