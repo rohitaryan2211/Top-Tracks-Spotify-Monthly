@@ -4,6 +4,7 @@ from spotipy.oauth2 import SpotifyOAuth
 import base64
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 load_dotenv()
 
@@ -49,8 +50,11 @@ def main():
 
     user_info = get_user_id(sp)
 
+    current_date = datetime.now()
+    month_year = current_date.strftime("%B %Y") 
+
     playlist_name = 'Top Tracks Per Month'
-    playlist_archive_name = 'Top Tracks Archive'
+    archive_playlist_name = f'Top Tracks Archive {month_year}'
 
     playlists = []
     offset = 0
@@ -67,16 +71,32 @@ def main():
             playlist_id = playlist["id"]
             break
 
+    archive_playlist_exists = False
+    archive_playlist_id = None
+    
     for playlist in playlists:
-        if playlist["name"] == playlist_archive_name:
-            playlist_archive_id = playlist["id"]
+        if playlist["name"] == archive_playlist_name:
+            archive_playlist_id = playlist["id"]
+            archive_playlist_exists = True
             break
+
+    if not archive_playlist_exists:
+        new_playlist = sp.user_playlist_create(
+            user=user_info,
+            name=archive_playlist_name,
+            public=True,
+            description=f"Auto-generated archive of Top Tracks Per Month for {month_year}"
+        )
+        archive_playlist_id = new_playlist["id"]
+        print(f"Created new playlist: {archive_playlist_name}")
+    else:
+        print(f"Playlist already exists: {archive_playlist_name}")
 
     archive_tracks = []
     offset = 0
 
     while True:
-        response = sp.playlist_tracks(playlist_archive_id, offset=offset, limit=50)
+        response = sp.playlist_tracks(archive_playlist_id, offset=offset, limit=50)
         items = response['items']
         if not items:
             break
@@ -100,8 +120,8 @@ def main():
     print(f"Updated the playlist: {playlist_name}")
 
     if len(new_archive_tracks) > 0:
-        sp.user_playlist_add_tracks(user=user_info, playlist_id=playlist_archive_id, tracks=new_archive_tracks, position=0)
-        print(f"Added {len(new_archive_tracks)} new tracks to the playlist: {playlist_archive_name}")
+        sp.user_playlist_add_tracks(user=user_info, playlist_id=archive_playlist_id, tracks=new_archive_tracks, position=0)
+        print(f"Added {len(new_archive_tracks)} new tracks to the playlist: {archive_playlist_name}")
     else:
         print("No new tracks to add to the archive playlist.")
 
