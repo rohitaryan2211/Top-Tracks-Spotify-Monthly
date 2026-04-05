@@ -4,7 +4,7 @@ from spotipy.oauth2 import SpotifyOAuth
 import base64
 from dotenv import load_dotenv
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -50,8 +50,9 @@ def main():
 
     user_info = get_user_id(sp)
 
-    current_date = datetime.now()
-    month_year = current_date.strftime("%B %Y") 
+    # Use UTC to match GitHub Actions runner timezone, avoiding month boundary mismatches
+    current_date = datetime.now(timezone.utc)
+    month_year = current_date.strftime("%B %Y")
 
     playlist_name = 'Top Tracks Per Month'
     archive_playlist_name = f'Top Tracks Archive {month_year}'
@@ -65,20 +66,25 @@ def main():
             break
         playlists.extend(batch)
         offset += 50
-    
+
+    # Find the main rolling playlist
+    playlist_id = None
     for playlist in playlists:
         if playlist["name"] == playlist_name:
             playlist_id = playlist["id"]
             break
 
-    archive_playlist_exists = False
-    archive_playlist_id = None
-    
-    for playlist in playlists:
-        if playlist["name"] == archive_playlist_name:
-            archive_playlist_id = playlist["id"]
-            archive_playlist_exists = True
-            break
+    if playlist_id is None:
+        raise ValueError(f"Main playlist '{playlist_name}' not found. Please create it manually first.")
+
+    # Find archive playlist - collect ALL matches to detect accidental duplicates
+    archive_matches = [p for p in playlists if p["name"] == archive_playlist_name]
+
+    if len(archive_matches) > 1:
+        print(f"WARNING: Found {len(archive_matches)} duplicate playlists named '{archive_playlist_name}'. Using the first one.")
+
+    archive_playlist_exists = len(archive_matches) > 0
+    archive_playlist_id = archive_matches[0]["id"] if archive_playlist_exists else None
 
     if not archive_playlist_exists:
         new_playlist = sp.user_playlist_create(
